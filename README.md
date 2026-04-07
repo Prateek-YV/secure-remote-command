@@ -13,7 +13,7 @@ A secure client-server system that allows authenticated clients to execute syste
 
 ### Detailed Responsibilities
 
-#### Member A - Server & Security Developer
+#### YELLAPANTULA VENKATA PRATEEK SRN:PES2UG24CS617 - Server & Security Developer
 - Implement TCP socket server with multi-threading
 - Setup SSL/TLS encryption and certificate generation
 - Implement challenge-response authentication (HMAC)
@@ -22,7 +22,7 @@ A secure client-server system that allows authenticated clients to execute syste
 - Handle multiple concurrent clients
 - Implement dangerous command blacklisting
 
-#### Member B - Client & Protocol Developer
+#### NARENDRA J KATHARE SRN:PES2UG25CS814 - Client & Protocol Developer
 - Implement TCP client with SSL/TLS connection
 - Design JSON-based communication protocol
 - Implement HMAC authentication on client side
@@ -31,7 +31,7 @@ A secure client-server system that allows authenticated clients to execute syste
 - Implement help menu and command suggestions
 - Cross-platform command mapping (Windows/Linux)
 
-#### Member C - Testing & Documentation Lead
+#### VENKATESH SRN:PES2UG24CS580 - Testing & Documentation Lead
 - Create performance testing suite
 - Measure connection latency and command throughput
 - Test scalability with multiple clients
