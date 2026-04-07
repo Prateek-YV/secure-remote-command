@@ -1,23 +1,24 @@
 # Secure Remote Command Execution System
 
-A secure client-server system that allows authenticated clients to execute commands remotely over SSL/TLS encrypted connections.
+## Overview
+A secure client-server system that allows authenticated clients to execute system commands remotely over SSL/TLS encrypted connections.
 
 ## Features
-
-- **SSL/TLS Encryption** - All communication encrypted
-- **Challenge-Response Authentication** - HMAC-based authentication
-- **Multi-Client Support** - Handles multiple concurrent clients
-- **Audit Logging** - Complete log of all activities
-- **Command Security** - Prevents command injection attacks
+- SSL/TLS encrypted communication
+- Challenge-response HMAC authentication
+- Multi-client support with threading
+- Structured JSON protocol
+- Comprehensive audit logging
+- Command injection prevention
+- Cross-platform support (Windows/Linux)
 
 ## Requirements
+- Python 3.7 or higher
+- pyOpenSSL library
 
-- Python 3.7+
-- OpenSSL
-- Dependencies: `pip install -r requirements.txt`
+## Installation
 
-## Quick Start
-
-### Start Server
+### 1. Clone or download the repository
 ```bash
-python server.py
+git clone https://github.com/yourusername/secure-remote-command.git
+cd secure-remote-command
