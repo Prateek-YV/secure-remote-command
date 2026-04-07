@@ -7,9 +7,9 @@ A secure client-server system that allows authenticated clients to execute syste
 
 | Member | Role | Responsibilities | Code Files |
 |--------|------|-----------------|------------|
-| **Member A (Team Lead)** | Server & Security Developer | Server architecture, SSL/TLS implementation, Multi-threading, Command execution engine, Security features | `server.py`, Certificate generation |
-| **Member B** | Client & Protocol Developer | Client implementation, Protocol design (JSON), Authentication mechanism, User interface, Command parsing | `client.py`, Protocol definitions |
-| **Member C** | Testing & Documentation Lead | Performance testing, Audit logging, GitHub repository, Documentation, Edge case testing | `performance_test.py`, `requirements.txt`, `README.md` |
+| **YELLAPANTULA VENKATA PRATEEK SRN:PES2UG24CS617** | Server & Security Developer | Server architecture, SSL/TLS implementation, Multi-threading, Command execution engine, Security features | `server.py`, Certificate generation |
+| **NARENDRA J KATHARE SRN:PES2UG25CS814** | Client & Protocol Developer | Client implementation, Protocol design (JSON), Authentication mechanism, User interface, Command parsing | `client.py`, Protocol definitions |
+| **VENKATESH SRN:PES2UG24CS580** | Testing & Documentation Lead | Performance testing, Audit logging, GitHub repository, Documentation, Edge case testing | `performance_test.py`, `requirements.txt`, `README.md` |
 
 ### Detailed Responsibilities
 
