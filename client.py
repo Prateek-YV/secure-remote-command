@@ -4,37 +4,37 @@ import json
 import hmac
 import hashlib
 import time
-import threading
-from datetime import datetime
+import sys
 
-# Configuration
-SERVER_HOST = 'localhost'
+# Configuration - CHANGE THIS FOR MULTIPLE LAPTOPS
+SERVER_HOST = 'localhost'  # Change to server's IP address (e.g., '192.168.1.100')
 SERVER_PORT = 8888
-SECRET_KEY = b'super_secret_key_123'  # Must match server
+SECRET_KEY = b'super_secret_key_123'
 
-class SecureCommandClient:
-    def __init__(self, username, password):
+class SecureClient:
+    def __init__(self, username):
         self.username = username
-        self.password = password
+        self.client_socket = None
+        
+        # SSL context
         self.context = ssl.create_default_context()
         self.context.check_hostname = False
-        self.context.verify_mode = ssl.CERT_NONE  # For self-signed cert
-        
+        self.context.verify_mode = ssl.CERT_NONE
+    
     def connect(self):
         """Connect to server"""
         try:
-            # Create socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            
-            # Wrap with SSL
+            sock.settimeout(10)
             self.client_socket = self.context.wrap_socket(sock, server_hostname=SERVER_HOST)
             self.client_socket.connect((SERVER_HOST, SERVER_PORT))
-            
             print(f"[+] Connected to {SERVER_HOST}:{SERVER_PORT}")
             return True
-            
+        except ConnectionRefusedError:
+            print("[-] Connection refused. Is server running?")
+            return False
         except Exception as e:
-            print(f"[-] Connection failed: {e}")
+            print(f"[-] Connection error: {e}")
             return False
     
     def authenticate(self):
@@ -44,141 +44,182 @@ class SecureCommandClient:
             data = self.client_socket.recv(1024).decode()
             challenge_msg = json.loads(data)
             
-            if challenge_msg['type'] != 'auth_challenge':
-                print("[-] Invalid authentication protocol")
+            if challenge_msg.get('type') != 'auth_challenge':
+                print("[-] Invalid challenge")
                 return False
             
             challenge = challenge_msg['challenge']
             
-            # Compute HMAC response
-            hmac_response = hmac.new(
+            # Compute HMAC
+            hmac_val = hmac.new(
                 SECRET_KEY,
                 f"{self.username}:{challenge}".encode(),
                 hashlib.sha256
             ).hexdigest()
             
-            # Send authentication response
-            auth_response = {
+            # Send response
+            response = {
                 'type': 'auth_response',
                 'username': self.username,
-                'hmac': hmac_response
+                'hmac': hmac_val
             }
-            self.client_socket.send(json.dumps(auth_response).encode())
+            self.client_socket.send(json.dumps(response).encode())
             
-            # Get authentication result
+            # Get result
             result = json.loads(self.client_socket.recv(1024).decode())
             
-            if result['status'] == 'success':
-                print(f"[+] Authentication successful")
+            if result.get('status') == 'success':
+                print("[+] Authentication successful")
                 
-                # **FIX: Receive and display welcome message**
-                welcome_data = self.client_socket.recv(4096).decode()
-                welcome_msg = json.loads(welcome_data)
-                if welcome_msg['type'] == 'welcome':
-                    print(welcome_msg['message'])
-                
+                # Receive welcome message
+                welcome = json.loads(self.client_socket.recv(4096).decode())
+                if welcome.get('type') == 'welcome':
+                    print(welcome['message'])
                 return True
             else:
-                print(f"[-] Authentication failed: {result['message']}")
+                print(f"[-] Auth failed: {result.get('message')}")
                 return False
                 
         except Exception as e:
-            print(f"[-] Authentication error: {e}")
+            print(f"[-] Auth error: {e}")
             return False
     
     def execute_command(self, command):
-        """Send command to server and get result"""
+        """Send command and get result"""
         try:
-            # Create command message
-            command_msg = {
+            cmd_msg = {
                 'type': 'command',
                 'command': command,
-                'command_id': str(time.time()),
-                'timestamp': datetime.now().isoformat()
+                'command_id': str(time.time())
             }
+            self.client_socket.send(json.dumps(cmd_msg).encode())
             
-            # Send command
-            self.client_socket.send(json.dumps(command_msg).encode())
+            response = json.loads(self.client_socket.recv(8192).decode())
             
-            # Receive response
-            response_data = self.client_socket.recv(8192).decode()
-            response = json.loads(response_data)
-            
-            # Handle different response types
-            if response['type'] == 'command_result':
-                return response['output']
-            elif response['type'] == 'welcome':
-                return response['message']  # Handle welcome message
+            if response.get('type') == 'command_result':
+                return response.get('output', 'No output')
             else:
-                return f"Unexpected response: {response}"
+                return f"Unexpected: {response}"
                 
-        except json.JSONDecodeError as e:
-            return f"Error decoding server response: {e}\nRaw data: {response_data if 'response_data' in locals() else 'None'}"
         except Exception as e:
             return f"Error: {e}"
     
-    def interactive_shell(self):
-        """Interactive command shell"""
-        print("\n" + "="*50)
-        print("Secure Remote Command Shell")
-        print("Type 'exit' to quit, 'help' for commands")
-        print("="*50 + "\n")
+    def show_help(self):
+        """Display comprehensive help menu"""
+        help_text = """
+================================================================================
+                         AVAILABLE COMMANDS
+================================================================================
+
+FILE OPERATIONS:
+--------------------------------------------------------------------------------
+  dir / ls              - List files in current directory
+  cd                    - Show current directory path
+  type <filename>       - View contents of a file
+  echo <text> > file    - Create file with text
+  echo <text> >> file   - Append text to existing file
+  del <filename>        - Delete a file
+  mkdir <dirname>       - Create a new directory
+  rmdir <dirname>       - Remove an empty directory
+  copy <src> <dest>     - Copy a file
+  ren <old> <new>       - Rename a file
+
+SYSTEM INFORMATION:
+--------------------------------------------------------------------------------
+  whoami                - Show current username
+  ipconfig              - Show network configuration
+  hostname              - Show computer name
+  date /t               - Show current date
+  time /t               - Show current time
+  ver                   - Show Windows version
+  tasklist              - Show running processes
+
+NETWORK COMMANDS:
+--------------------------------------------------------------------------------
+  ping <host>           - Test network connection
+  netstat -an           - Show network connections
+
+TEXT PROCESSING:
+--------------------------------------------------------------------------------
+  findstr <text> <file> - Search for text in files
+  echo <text>           - Display text
+
+PROCESS MANAGEMENT:
+--------------------------------------------------------------------------------
+  tasklist              - List running processes
+  taskkill /PID <id>    - Kill a process by ID
+
+================================================================================
+EXAMPLES:
+--------------------------------------------------------------------------------
+  List files:           dir
+  Create file:          echo Hello World > myfile.txt
+  View file:            type myfile.txt
+  Append to file:       echo New line >> myfile.txt
+  Delete file:          del myfile.txt
+  Create folder:        mkdir testfolder
+  Network info:         ipconfig
+  Current user:         whoami
+  Search in file:       findstr "error" server.py
+================================================================================
+"""
+        print(help_text)
+    
+    def run(self):
+        """Main client loop"""
+        if not self.connect():
+            return
+        
+        if not self.authenticate():
+            self.client_socket.close()
+            return
+        
+        print("\nType 'help' for complete command list, 'exit' to quit\n")
         
         while True:
             try:
-                # Get command
-                command = input(f"{self.username}@remote> ").strip()
+                cmd = input(f"{self.username}@remote> ").strip()
                 
-                if command.lower() == 'exit':
-                    # Send exit message to server
-                    exit_msg = {'type': 'exit'}
-                    self.client_socket.send(json.dumps(exit_msg).encode())
+                if cmd.lower() == 'exit':
                     break
-                elif command.lower() == 'help':
-                    # Help is handled by server
-                    pass
-                elif not command:
+                elif cmd.lower() == 'help':
+                    self.show_help()
+                    continue
+                elif cmd.lower() == 'clear' or cmd.lower() == 'cls':
+                    print("\n" * 50)
+                    continue
+                elif not cmd:
                     continue
                 
-                # Measure execution time
-                start_time = time.time()
+                start = time.time()
+                result = self.execute_command(cmd)
+                elapsed = (time.time() - start) * 1000
                 
-                # Execute command
-                result = self.execute_command(command)
-                
-                # Calculate latency
-                latency = time.time() - start_time
-                
-                # Display result
                 print(result)
-                print(f"\n[Command completed in {latency:.3f}s]")
+                if result and not result.startswith("ERROR"):
+                    print(f"\n[Time: {elapsed:.2f}ms]")
+                print()
                 
             except KeyboardInterrupt:
                 print("\nUse 'exit' to quit")
             except Exception as e:
                 print(f"Error: {e}")
-    
-    def close(self):
-        """Close connection"""
-        if hasattr(self, 'client_socket'):
-            self.client_socket.close()
-            print("[+] Connection closed")
+                break
+        
+        self.client_socket.close()
+        print("[+] Disconnected")
 
 def main():
-    print("Secure Remote Command Client")
-    print("-" * 30)
+    print("="*60)
+    print("     SECURE REMOTE COMMAND EXECUTION SYSTEM")
+    print("="*60)
+    print()
     
-    # Get credentials
     username = input("Username: ").strip()
-    password = input("Password: ").strip()  # Not used directly, but could be for key derivation
+    password = input("Password: ").strip()
     
-    # Create and connect client
-    client = SecureCommandClient(username, password)
-    
-    if client.connect():
-        if client.authenticate():
-            client.interactive_shell()
-        client.close()
+    client = SecureClient(username)
+    client.run()
 
 if __name__ == "__main__":
     main()
