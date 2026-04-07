@@ -1,232 +1,329 @@
-import time
-import threading
-import statistics
-import subprocess
 import socket
-import json
 import ssl
-import matplotlib.pyplot as plt
+import json
+import time
+import statistics
+import sys
 from concurrent.futures import ThreadPoolExecutor
-import numpy as np
 
 class PerformanceTester:
     def __init__(self):
-        self.secure_latencies = []
-        self.insecure_latencies = []
-        self.throughput_results = {}
+        self.results = {
+            'connection_times': [],
+            'command_times': [],
+            'throughput_data': []
+        }
+    
+    def check_server(self):
+        """Check if server is running"""
+        try:
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            secure = context.wrap_socket(sock, server_hostname='localhost')
+            secure.connect(('localhost', 8888))
+            secure.close()
+            return True
+        except:
+            return False
+    
+    def quick_auth(self, secure_sock):
+        """Quick authentication for testing"""
+        try:
+            data = secure_sock.recv(1024).decode()
+            secure_sock.send(json.dumps({
+                'type': 'auth_response',
+                'username': 'admin',
+                'hmac': 'test'
+            }).encode())
+            secure_sock.recv(1024)
+            secure_sock.recv(4096)
+            return True
+        except:
+            return False
+    
+    def test_connection(self, num_tests=10):
+        """Test connection time"""
+        print("\n" + "="*50)
+        print("TEST 1: CONNECTION TIME")
+        print("="*50)
         
-    def test_secure_server(self, num_requests=50):
-        """Test secure server performance"""
-        print("\n[*] Testing SECURE server...")
+        times = []
+        success = 0
         
-        # Test latency
-        latencies = []
-        for i in range(num_requests):
+        for i in range(num_tests):
+            start = time.time()
             try:
-                start = time.time()
-                
-                # Create secure connection
                 context = ssl.create_default_context()
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
                 
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                secure_sock = context.wrap_socket(sock, server_hostname='localhost')
-                secure_sock.connect(('localhost', 8888))
+                sock.settimeout(5)
+                secure = context.wrap_socket(sock, server_hostname='localhost')
+                secure.connect(('localhost', 8888))
                 
-                # Skip auth for performance test (or implement minimal auth)
-                secure_sock.close()
+                elapsed = (time.time() - start) * 1000
+                times.append(elapsed)
+                success += 1
+                secure.close()
                 
-                latency = time.time() - start
-                latencies.append(latency)
+                print(f"  Test {i+1}: {elapsed:.2f} ms")
+                time.sleep(0.1)
                 
             except Exception as e:
-                print(f"Error: {e}")
-                
-        self.secure_latencies = latencies
-        print(f"Secure Server - Avg Latency: {statistics.mean(latencies)*1000:.2f}ms")
+                print(f"  Test {i+1}: FAILED - {e}")
         
-    def test_insecure_server(self, num_requests=50):
-        """Test insecure server performance (for comparison)"""
-        print("\n[*] Testing INSECURE server (baseline)...")
+        if times:
+            self.results['connection_times'] = times
+            print(f"\n[OK] Successful: {success}/{num_tests}")
+            print(f"[*] Average: {statistics.mean(times):.2f} ms")
+            print(f"[*] Min: {min(times):.2f} ms")
+            print(f"[*] Max: {max(times):.2f} ms")
+            return True
+        else:
+            print("\n[FAIL] All connection tests failed!")
+            return False
+    
+    def test_command_latency(self, command='echo test', num_tests=10):
+        """Test command latency"""
+        print("\n" + "="*50)
+        print(f"TEST 2: COMMAND LATENCY ('{command}')")
+        print("="*50)
         
-        # You'll need to run a simple insecure server for this test
-        latencies = []
-        for i in range(num_requests):
+        times = []
+        success = 0
+        
+        for i in range(num_tests):
             try:
                 start = time.time()
                 
-                # Simple TCP connection (no SSL)
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect(('localhost', 8889))  # Use different port for insecure server
-                sock.close()
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
                 
-                latency = time.time() - start
-                latencies.append(latency)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                secure = context.wrap_socket(sock, server_hostname='localhost')
+                secure.connect(('localhost', 8888))
+                
+                if not self.quick_auth(secure):
+                    secure.close()
+                    continue
+                
+                cmd = {'type': 'command', 'command': command, 'command_id': str(i)}
+                secure.send(json.dumps(cmd).encode())
+                secure.recv(8192)
+                
+                elapsed = (time.time() - start) * 1000
+                times.append(elapsed)
+                success += 1
+                secure.close()
+                
+                print(f"  Test {i+1}: {elapsed:.2f} ms")
+                time.sleep(0.1)
                 
             except Exception as e:
-                print(f"Error: {e}")
-                
-        self.insecure_latencies = latencies
-        print(f"Insecure Server - Avg Latency: {statistics.mean(latencies)*1000:.2f}ms")
-    
-    def test_throughput(self, num_clients=10, commands_per_client=10):
-        """Test system throughput under load"""
-        print(f"\n[*] Testing throughput with {num_clients} clients...")
+                print(f"  Test {i+1}: FAILED - {e}")
         
-        def client_worker(client_id):
+        if times:
+            self.results['command_times'] = times
+            print(f"\n[OK] Successful: {success}/{num_tests}")
+            print(f"[*] Average: {statistics.mean(times):.2f} ms")
+            print(f"[*] Min: {min(times):.2f} ms")
+            print(f"[*] Max: {max(times):.2f} ms")
+            return True
+        else:
+            print("\n[FAIL] All command tests failed!")
+            return False
+    
+    def test_scalability(self):
+        """Test scalability with different client counts"""
+        print("\n" + "="*50)
+        print("TEST 3: SCALABILITY TEST")
+        print("="*50)
+        
+        client_counts = [1, 2, 3, 5]
+        results = []
+        
+        for clients in client_counts:
+            print(f"\n[*] Testing with {clients} concurrent clients...")
+            
+            def worker(worker_id):
+                try:
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(10)
+                    secure = context.wrap_socket(sock, server_hostname='localhost')
+                    secure.connect(('localhost', 8888))
+                    
+                    if not self.quick_auth(secure):
+                        secure.close()
+                        return None
+                    
+                    start = time.time()
+                    cmd = {'type': 'command', 'command': 'echo test', 'command_id': str(worker_id)}
+                    secure.send(json.dumps(cmd).encode())
+                    secure.recv(8192)
+                    latency = (time.time() - start) * 1000
+                    
+                    secure.close()
+                    return latency
+                except:
+                    return None
+            
+            latencies = []
+            with ThreadPoolExecutor(max_workers=clients) as executor:
+                futures = [executor.submit(worker, i) for i in range(clients)]
+                for future in futures:
+                    result = future.result()
+                    if result:
+                        latencies.append(result)
+            
+            if latencies:
+                avg_latency = statistics.mean(latencies)
+                results.append({'clients': clients, 'avg_latency': avg_latency, 'success': len(latencies)})
+                print(f"  [OK] {len(latencies)}/{clients} successful")
+                print(f"  [*] Average latency: {avg_latency:.2f} ms")
+        
+        self.results['scalability'] = results
+        return results
+    
+    def test_throughput(self, num_clients=3, commands_per_client=6):
+        """Test throughput under load"""
+        print("\n" + "="*50)
+        print(f"TEST 4: THROUGHPUT ({num_clients} clients x {commands_per_client} commands)")
+        print("="*50)
+        
+        def worker(worker_id):
             latencies = []
             try:
-                # Connect to secure server
                 context = ssl.create_default_context()
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
                 
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                secure_sock = context.wrap_socket(sock, server_hostname='localhost')
-                secure_sock.connect(('localhost', 8888))
+                sock.settimeout(10)
+                secure = context.wrap_socket(sock, server_hostname='localhost')
+                secure.connect(('localhost', 8888))
                 
-                # Skip auth for throughput test
+                if not self.quick_auth(secure):
+                    secure.close()
+                    return []
                 
-                for cmd_num in range(commands_per_client):
+                for i in range(commands_per_client):
                     start = time.time()
-                    
-                    # Send command
-                    command = {'type': 'command', 'command': 'echo test'}
-                    secure_sock.send(json.dumps(command).encode())
-                    
-                    # Receive response
-                    response = secure_sock.recv(4096)
-                    
-                    latency = time.time() - start
-                    latencies.append(latency)
-                    
-                secure_sock.close()
+                    cmd = {'type': 'command', 'command': 'echo t', 'command_id': f'{worker_id}-{i}'}
+                    secure.send(json.dumps(cmd).encode())
+                    secure.recv(8192)
+                    latencies.append((time.time() - start) * 1000)
                 
-            except Exception as e:
-                print(f"Client {client_id} error: {e}")
-                
-            return latencies
+                secure.close()
+                return latencies
+            except:
+                return []
         
-        # Run clients concurrently
+        start_time = time.time()
         all_latencies = []
+        
         with ThreadPoolExecutor(max_workers=num_clients) as executor:
-            futures = [executor.submit(client_worker, i) for i in range(num_clients)]
+            futures = [executor.submit(worker, i) for i in range(num_clients)]
             for future in futures:
                 all_latencies.extend(future.result())
         
-        # Calculate throughput
-        total_commands = num_clients * commands_per_client
-        total_time = sum(all_latencies)
+        total_time = time.time() - start_time
+        total_commands = len(all_latencies)
         
-        self.throughput_results = {
-            'total_commands': total_commands,
-            'avg_latency': statistics.mean(all_latencies) if all_latencies else 0,
-            'throughput': total_commands / total_time if total_time > 0 else 0,
-            'p95_latency': np.percentile(all_latencies, 95) if all_latencies else 0
-        }
-        
-        print(f"Total commands executed: {total_commands}")
-        print(f"Average latency: {self.throughput_results['avg_latency']*1000:.2f}ms")
-        print(f"Throughput: {self.throughput_results['throughput']:.2f} commands/second")
-        print(f"95th percentile latency: {self.throughput_results['p95_latency']*1000:.2f}ms")
+        if all_latencies:
+            self.results['throughput'] = {
+                'total_commands': total_commands,
+                'total_time': total_time,
+                'commands_per_second': total_commands / total_time,
+                'avg_latency': statistics.mean(all_latencies),
+                'min_latency': min(all_latencies),
+                'max_latency': max(all_latencies)
+            }
+            print(f"\n[OK] Total commands executed: {total_commands}")
+            print(f"[*] Total time: {total_time:.2f} seconds")
+            print(f"[*] Throughput: {self.results['throughput']['commands_per_second']:.2f} commands/sec")
+            print(f"[*] Avg latency under load: {self.results['throughput']['avg_latency']:.2f} ms")
+            return True
+        else:
+            print("\n[FAIL] Throughput test failed!")
+            return False
     
     def generate_report(self):
-        """Generate performance analysis report"""
-        print("\n" + "="*60)
-        print("PERFORMANCE OVERHEAD ANALYSIS REPORT")
-        print("="*60)
+        """Generate final performance report"""
+        print("\n" + "="*50)
+        print("PERFORMANCE ANALYSIS REPORT")
+        print("="*50)
         
-        if self.secure_latencies and self.insecure_latencies:
-            secure_avg = statistics.mean(self.secure_latencies)
-            insecure_avg = statistics.mean(self.insecure_latencies)
-            overhead = ((secure_avg - insecure_avg) / insecure_avg) * 100
-            
-            print(f"\n1. Latency Comparison:")
-            print(f"   - Insecure (baseline): {insecure_avg*1000:.2f}ms")
-            print(f"   - Secure: {secure_avg*1000:.2f}ms")
-            print(f"   - Overhead: +{overhead:.1f}%")
+        # Connection Times
+        if self.results['connection_times']:
+            avg = statistics.mean(self.results['connection_times'])
+            print(f"\n1. SSL CONNECTION TIME")
+            print(f"   Average: {avg:.2f} ms")
+            print(f"   Range: {min(self.results['connection_times']):.2f} - {max(self.results['connection_times']):.2f} ms")
         
-        if self.throughput_results:
-            print(f"\n2. Throughput Analysis:")
-            print(f"   - Commands/second: {self.throughput_results['throughput']:.2f}")
-            print(f"   - Average latency under load: {self.throughput_results['avg_latency']*1000:.2f}ms")
-            print(f"   - P95 latency: {self.throughput_results['p95_latency']*1000:.2f}ms")
+        # Command Latencies
+        if self.results['command_times']:
+            avg = statistics.mean(self.results['command_times'])
+            print(f"\n2. COMMAND EXECUTION LATENCY")
+            print(f"   Average: {avg:.2f} ms")
+            print(f"   Range: {min(self.results['command_times']):.2f} - {max(self.results['command_times']):.2f} ms")
         
-        print("\n3. Security Overhead Factors:")
-        print("   - SSL/TLS handshake (connection establishment)")
-        print("   - Encryption/decryption of data")
-        print("   - Authentication challenge-response")
-        print("   - Audit logging I/O operations")
+        # Scalability
+        if self.results.get('scalability'):
+            print(f"\n3. SCALABILITY ANALYSIS")
+            for r in self.results['scalability']:
+                print(f"   {r['clients']} clients: {r['avg_latency']:.2f} ms")
         
-        print("\n4. Recommendations:")
-        print("   - Use connection pooling to reduce handshake overhead")
-        print("   - Implement command batching for multiple commands")
-        print("   - Consider lighter encryption for LAN environments")
-        print("   - Async I/O for better throughput")
+        # Throughput
+        if self.results.get('throughput'):
+            print(f"\n4. THROUGHPUT ANALYSIS")
+            print(f"   Commands per second: {self.results['throughput']['commands_per_second']:.2f}")
+            print(f"   Total commands: {self.results['throughput']['total_commands']}")
+            print(f"   Avg latency under load: {self.results['throughput']['avg_latency']:.2f} ms")
         
-        # Create visualization
-        self.create_plots()
-    
-    def create_plots(self):
-        """Create performance visualization plots"""
-        try:
-            fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-            
-            # Latency comparison plot
-            if self.secure_latencies and self.insecure_latencies:
-                axes[0].hist([self.insecure_latencies, self.secure_latencies], 
-                            label=['Insecure', 'Secure'], 
-                            bins=20, alpha=0.7)
-                axes[0].set_xlabel('Latency (seconds)')
-                axes[0].set_ylabel('Frequency')
-                axes[0].set_title('Latency Distribution Comparison')
-                axes[0].legend()
-            
-            # Throughput plot
-            if self.throughput_results:
-                labels = ['Avg Latency', 'P95 Latency']
-                values = [self.throughput_results['avg_latency']*1000, 
-                         self.throughput_results['p95_latency']*1000]
-                
-                axes[1].bar(labels, values, color=['blue', 'orange'])
-                axes[1].set_ylabel('Latency (ms)')
-                axes[1].set_title('Throughput Test Latencies')
-                
-                # Add throughput text
-                axes[1].text(0.5, 0.9, 
-                            f"Throughput: {self.throughput_results['throughput']:.1f} cmd/s",
-                            transform=axes[1].transAxes,
-                            bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow"))
-            
-            plt.tight_layout()
-            plt.savefig('performance_analysis.png')
-            print("\n[+] Performance plots saved to 'performance_analysis.png'")
-            
-        except Exception as e:
-            print(f"Could not create plots: {e}")
+        print("\n" + "="*50)
+        print("REPORT COMPLETE")
+        print("="*50)
 
-def run_insecure_test_server():
-    """Simple insecure server for baseline testing"""
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('localhost', 8889))
-    server.listen(1)
+def main():
+    print("\n" + "="*50)
+    print("PERFORMANCE TEST TOOL")
+    print("="*50)
     
-    print("[*] Insecure test server running on port 8889")
-    
-    while True:
-        client, addr = server.accept()
-        client.close()
-
-if __name__ == "__main__":
     tester = PerformanceTester()
     
+    # Check server
+    print("\n[*] Checking server...")
+    if not tester.check_server():
+        print("\n[ERROR] Server is not running!")
+        print("[*] Start server first: python server.py")
+        sys.exit(1)
+    print("[OK] Server is running!")
+    
     # Run tests
-    tester.test_secure_server(30)
+    conn_ok = tester.test_connection(10)
     
-    # Note: You need to run an insecure server separately on port 8889
-    # Uncomment the next line if you want to test insecure server
-    # tester.test_insecure_server(30)
-    
-    tester.test_throughput(num_clients=5, commands_per_client=10)
-    tester.generate_report()
+    if conn_ok:
+        cmd_ok = tester.test_command_latency('echo test', 8)
+        
+        if cmd_ok:
+            tester.test_scalability()
+            tester.test_throughput(num_clients=3, commands_per_client=6)
+            tester.generate_report()
+        else:
+            print("\n[ERROR] Command test failed.")
+    else:
+        print("\n[ERROR] Connection test failed. Check server.")
+
+if __name__ == "__main__":
+    main()
